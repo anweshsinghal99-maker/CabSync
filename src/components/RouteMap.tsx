@@ -1,0 +1,12 @@
+"use client";
+import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import { Clock3, MapPin } from "lucide-react";
+import { CAMPUS_NODES, TRANSIT_HUBS } from "@/lib/constants";
+import type { Pod } from "@/lib/types";
+import { fmtTime } from "@/lib/utils";
+const MapCanvas = dynamic(() => import("./RouteMapCanvas"), { ssr: false, loading: () => <div className="grid h-[330px] place-items-center text-sm text-slate-500">Loading route map…</div> });
+export function RouteMap({ pod }: { pod: Pod }) { const [route, setRoute] = useState<[number, number][]>([]); const hub = TRANSIT_HUBS[pod.destination_hub]; const stops = [...pod.members.map(m => CAMPUS_NODES[m.hostel]), CAMPUS_NODES["Main Gate"], hub.coords];
+  useEffect(() => { const coordinates = stops.map(([lat, lng]) => `${lng},${lat}`).join(";"); fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson`).then(r => r.json()).then(d => setRoute(d.routes?.[0]?.geometry.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]) || stops)).catch(() => setRoute(stops)); }, [pod.id]);
+  const base = Math.max(0, Number(pod.campus_leave_time.slice(0,2))*60 + Number(pod.campus_leave_time.slice(3))); const timeline = [...pod.members.map((m,i) => ({ label: m.hostel, time: base - (pod.members.length-i)*4 })), { label: "Main Gate", time: base }, { label: pod.destination_hub, time: base + Math.max(20, hub.buffer - 30) }];
+  return <section className="card overflow-hidden"><div className="flex items-center justify-between p-5"><div><p className="eyebrow">Live pickup route</p><h2 className="text-lg font-semibold">Your shared ride, mapped</h2></div><MapPin className="text-emerald-400"/></div><MapCanvas stops={stops} route={route} members={pod.members} hub={pod.destination_hub}/><div className="border-t border-slate-800 p-5"><p className="mb-3 flex items-center gap-2 text-sm font-medium"><Clock3 size={16} className="text-amber-400"/> Driver Pickup Timeline</p><div className="space-y-2">{timeline.map((s,i) => <div key={s.label + i} className="flex items-center gap-3 text-sm"><span className="w-20 font-mono text-emerald-400">{fmtTime(`${String(Math.floor(s.time/60)%24).padStart(2,"0")}:${String(s.time%60).padStart(2,"0")}`)}</span><span className="h-2 w-2 rounded-full bg-slate-600"/><span className="text-slate-300">{s.label}</span></div>)}</div></div></section>; }
